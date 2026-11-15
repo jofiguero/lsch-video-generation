@@ -250,3 +250,46 @@ svg.chart g.row:hover .bar { opacity: 0.85; }
   .grid-2x2 { grid-template-columns: 1fr; }
   .key { display: inline-block; margin: 4px 10px 0 0; }
 }
+
+/* Centrado, como la página de Miguel: el encabezado va centrado y cada bloque de contenido es una
+   columna centrada en la página. Los párrafos largos se alinean a la izquierda dentro de su columna. */
+.hero { text-align: center; }
+.hero > p, .hero h1 { margin-left: auto; margin-right: auto; }
+.hero .affil { max-width: 70ch; }
+.links { justify-content: center; }
+.demo { margin-left: auto; margin-right: auto; text-align: left; }
+.demo-in, .demo-out { align-items: center; text-align: center; }
+.demo-in .glosses { justify-content: center; }
+.demo .ref img, .demo-out video { margin-left: auto; margin-right: auto; }
+.hero > .caption { margin-left: auto; margin-right: auto; }
+.abstract { margin-left: auto; margin-right: auto; text-align: left; }
+
+main > section.shell:not(.hero) > .kicker,
+main > section.shell:not(.hero) > h2,
+main > section.shell:not(.hero) > h3 { text-align: center; margin-left: auto; margin-right: auto; }
+main > section.shell:not(.hero) > p { margin-left: auto; margin-right: auto; }
+.lead, section > p:not(.lead):not(.kicker):not(.caption):not(.note) { max-width: 72ch; }
+.caption, .note, figcaption { margin-left: auto; margin-right: auto; text-align: center; }
+.switcher { justify-content: center; }
+.gallery .glosses { justify-content: center; }
+
+.flow-row { justify-content: center; }
+.flow-name { text-align: center; }
+.flow-note { text-align: center; }
+
+.chart-block { max-width: 920px; margin-left: auto; margin-right: auto; }
+.chart-title, .chart-sub { text-align: center; }
+#chart-identity { max-width: 760px; margin: 0 auto; }
+.table-wrap { margin-left: auto; margin-right: auto; }
+caption { text-align: center; }
+details { max-width: 920px; margin-left: auto; margin-right: auto; }
+details .table-wrap { max-width: none; }
+
+.footer h2 { text-align: center; }
+.refs { margin-left: auto; margin-right: auto; }
+.footer .small { text-align: center; }
+
+@media (max-width: 760px) {
+  .demo-in { justify-items: center; }
+  .demo-in .label { text-align: center; }
+}

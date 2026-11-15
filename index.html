@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="es" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video en LSCh con identidad</title>
+  <meta name="description" content="Resultados de un traductor de texto a video en Lengua de Señas Chilena que conserva la identidad de quien seña: la réplica de SignViP y un sistema propio que recupera señas reales por glosa.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.replace("no-js", "js");</script>
+  <script defer src="assets/results.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+<a class="skip" href="#contenido">Saltar al contenido</a>
+
+<header class="topbar">
+  <nav class="nav" aria-label="Secciones">
+    <a class="brand" href="#inicio">LSCh · video</a>
+    <ul>
+      <li><a href="#pipelines">Pipelines</a></li>
+      <li><a href="#condiciones">Condiciones</a></li>
+      <li><a href="#phoenix">PHOENIX</a></li>
+      <li><a href="#chilean2sign">Chilean2Sign</a></li>
+      <li><a href="#recuperacion">Recuperación</a></li>
+      <li><a href="#normalizacion">Normalización</a></li>
+      <li><a href="#modelo-384">Modelo 384</a></li>
+      <li><a href="#identidad">Identidad</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="contenido">
+
+<!-- Encabezado -->
+<section id="inicio" class="hero shell" aria-labelledby="titulo">
+  <p class="eyebrow">Fondecyt Regular 1250344 · Lengua de Señas Chilena</p>
+  <h1 id="titulo">Generación de video en Lengua de Señas Chilena con preservación de identidad</h1>
+  <p class="authors"><span>Joaquín Figueroa<sup>1</sup></span> · <span>Ana Aguilera<sup>2</sup></span></p>
+  <p class="affil"><sup>1</sup> Departamento de Ciencias de la Computación, Universidad de Chile ·
+    <sup>2</sup> Escuela de Ingeniería Informática, Universidad de Valparaíso</p>
+  <p class="links">
+    <a class="pill" href="https://slate-uv.github.io/cross-corpus-pose-evaluation/">Evaluación de estimadores de pose (Yáñez y Aguilera) ↗</a>
+    <a class="pill" href="#creditos">Paper CLEI 2026</a>
+  </p>
+
+  <div class="demo">
+    <div class="demo-in">
+      <p class="label">Entrada</p>
+      <ol class="glosses" aria-label="Glosas de entrada">
+        <li>TEMA</li><li>IR</li><li>ENTREVISTA</li><li>TRABAJAR</li>
+      </ol>
+      <figure class="ref">
+        <img src="assets/images/referencia_inf6.webp" width="320" height="384" alt="Foto de referencia de la informante 6 sentada frente a un fondo azul">
+        <figcaption>Foto de referencia</figcaption>
+      </figure>
+    </div>
+    <div class="demo-arrow" aria-hidden="true">→</div>
+    <figure class="demo-out">
+      <p class="label">Salida</p>
+      <video class="autoplay" src="assets/videos/hero.mp4" poster="assets/videos/hero.webp" width="320" height="384"
+             muted loop playsinline controls preload="metadata"
+             aria-label="Video generado de la informante 6 señando TEMA IR ENTREVISTA TRABAJAR"></video>
+    </figure>
+  </div>
+  <p class="caption">Cada glosa sale de un clip real del catálogo, que reúne a los 14 informantes con que se entrenó el
+    difusor. El sistema adapta cada esqueleto al cuerpo de la persona de la foto, une los clips y el difusor
+    <code>chdata12-384-FT</code> renderiza la frase con su apariencia.</p>
+
+  <div class="abstract">
+    <h2 class="sr-only">Resumen</h2>
+    <p>Este trabajo busca construir un traductor de texto a video en Lengua de Señas Chilena (LSCh) que muestre a una
+      persona concreta señando. Partimos de SignViP, un método publicado que genera la pose desde el texto y la
+      renderiza con un difusor de video, y lo llevamos primero a PHOENIX y luego a Chilean2Sign, el corpus chileno del
+      proyecto. El difusor aprendió a representar a quien seña conservando su identidad, pero la generación de la pose
+      desde el texto no logró producir señas correctas con los datos disponibles. A partir de ese resultado diseñamos
+      un sistema propio, interpolado, que recupera señas reales del corpus para cada glosa, las adapta al cuerpo de la
+      persona de referencia y las une para que el mismo difusor las renderice.</p>
+  </div>
+</section>
+
+<!-- 01. Dos pipelines -->
+<section id="pipelines" class="shell" aria-labelledby="t-pipelines">
+  <p class="kicker">01</p>
+  <h2 id="t-pipelines">Dos maneras de llegar a la pose, un mismo difusor</h2>
+  <p class="lead">Los dos sistemas terminan en el difusor de video de SignViP, que combina Stable Diffusion 1.5 con un
+    <em>appearance encoder</em> que toma la identidad de una foto, un <em>condition encoder</em> que lee la pose y
+    módulos temporales de AnimateDiff. La diferencia está en cómo obtienen la pose. SignViP la genera desde el texto,
+    mientras que interpolado la recupera de grabaciones reales.</p>
+
+  <div class="flow" role="img" aria-label="Diagrama. SignViP va de texto a GPT, FSQ y difusor. Interpolado va de glosas a catálogo, normalización, costura y difusor. Ambos usan el mismo difusor con una foto de referencia.">
+    <div class="flow-row">
+      <span class="flow-name">SignViP</span>
+      <span class="node in">Texto</span><span class="arr">→</span>
+      <span class="node weak">GPT<small>predice tokens de pose</small></span><span class="arr">→</span>
+      <span class="node weak">FSQ<small>decodifica los tokens</small></span><span class="arr">→</span>
+      <span class="node shared">Difusor</span>
+    </div>
+    <div class="flow-row">
+      <span class="flow-name">Interpolado</span>
+      <span class="node in">Glosas</span><span class="arr">→</span>
+      <span class="node">Catálogo<small>un clip real por glosa</small></span><span class="arr">→</span>
+      <span class="node">Normalización<small>al cuerpo de la referencia</small></span><span class="arr">→</span>
+      <span class="node">Costura<small>5 cuadros por unión</small></span><span class="arr">→</span>
+      <span class="node shared">Difusor</span>
+    </div>
+    <p class="flow-note"><span class="swatch weak"></span> Etapas que no generalizan con los datos actuales
+      · <span class="swatch shared"></span> Difusor compartido, que recibe la pose y una foto de referencia y entrega el video</p>
+  </div>
+</section>
+
+<!-- 02. Condiciones -->
+<section id="condiciones" class="shell" aria-labelledby="t-condiciones">
+  <p class="kicker">02</p>
+  <h2 id="t-condiciones">El difusor ve el cuerpo con DWPose y las manos con HaMeR</h2>
+  <p class="lead">El difusor no recibe el video original, sino dos condiciones extraídas de él. Una es el esqueleto 2D
+    de DWPose, con cuerpo, cara y manos; la otra es la malla 3D de cada mano que reconstruye HaMeR, renderizada como
+    video. Con esas condiciones y una foto de la persona, el difusor genera cada cuadro. Las manos son la parte más
+    fina de la señal y la que más se degrada.</p>
+  <figure class="media wide">
+    <video class="autoplay" src="assets/videos/condiciones.mp4" poster="assets/videos/condiciones.webp"
+           muted loop playsinline controls preload="none"
+           aria-label="Cuatro paneles sincronizados con el video original, el esqueleto DWPose, las manos de HaMeR y el video generado por el difusor"></video>
+    <figcaption>Secuencia cosida UNIVERSIDAD · ESCUELA · TRABAJAR · DIFÍCIL · PROBLEMA (informante 1). De izquierda a
+      derecha, el original, DWPose, HaMeR (al doble de resolución) y el video generado por
+      <code>chdata12-384-FT</code>.</figcaption>
+  </figure>
+</section>
+
+<!-- 03. PHOENIX -->
+<section id="phoenix" class="shell" aria-labelledby="t-phoenix">
+  <p class="kicker">03 · SignViP</p>
+  <h2 id="t-phoenix">En PHOENIX el avatar se mueve bien; el error entra con el GPT</h2>
+  <p class="lead">Replicamos SignViP completo sobre RWTH-PHOENIX-Weather 2014, un corpus de referencia en lengua de
+    señas alemana. Con poses reales, el difusor reconstruye a quien seña con fidelidad, y pasar por el FSQ casi no
+    cambia el resultado. Cuando el GPT genera la pose desde el texto, el avatar sigue fluido y reconocible, pero las
+    señas ya no son las de la oración y el FVD casi se triplica. La nitidez y el FID no empeoran, así que la pérdida es
+    de contenido y no de calidad de imagen.</p>
+
+  <figure class="media wide">
+    <div class="switcher js-only" role="group" aria-label="Elegir clip de PHOENIX">
+      <button type="button" aria-pressed="true" data-src="assets/videos/phoenix_20111201_heute6.mp4">heute · 01/12/2011</button>
+      <button type="button" aria-pressed="false" data-src="assets/videos/phoenix_20110201_tagesschau13.mp4">tagesschau · 01/02/2011</button>
+      <button type="button" aria-pressed="false" data-src="assets/videos/phoenix_20101105_tagesschau8.mp4">tagesschau · 05/11/2010</button>
+    </div>
+    <video class="autoplay" src="assets/videos/phoenix_20111201_heute6.mp4" poster="assets/videos/phoenix_20111201_heute6.webp"
+           muted loop playsinline controls preload="none"
+           aria-label="Cuatro paneles con el clip original de PHOENIX y el mismo clip generado en los tres modos de inferencia"></video>
+    <figcaption>El original y el mismo clip en los tres modos de inferencia del modelo replicado. En los dos primeros la
+      pose viene del clip real; en el tercero la genera el GPT desde el texto, con su propia duración. Videos derivados de
+      RWTH-PHOENIX-Weather 2014 (CC BY-NC-SA 3.0).</figcaption>
+  </figure>
+
+  <div class="chart-block">
+    <h3 class="chart-title">Las métricas caen al entrar el GPT</h3>
+    <p class="chart-sub">Modelo replicado sobre el conjunto de prueba de PHOENIX. <span class="key"><span class="swatch s1"></span>pose real</span>
+      <span class="key"><span class="swatch s2"></span>pose generada por el GPT</span></p>
+    <div id="chart-phoenix" class="multiples" aria-hidden="true"></div>
+    <details>
+      <summary>Tabla completa</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Métrica</th><th>Difusor</th><th>FSQ → Difusor</th><th>GPT → FSQ → Difusor</th></tr></thead>
+          <tbody>
+            <tr><td>FVD ↓</td><td>528,5</td><td>598,3</td><td>1.526,6</td></tr>
+            <tr><td>FID ↓</td><td>31,3</td><td>33,2</td><td>22,9</td></tr>
+            <tr><td>SSIM ↑</td><td>0,819</td><td>0,780</td><td>0,643</td></tr>
+            <tr><td>LPIPS ↓</td><td>0,087</td><td>0,114</td><td>0,270</td></tr>
+            <tr><td>IDS ↑</td><td>0,633</td><td>0,633</td><td>0,574</td></tr>
+            <tr><td>Nitidez (Laplaciano) ↑</td><td>748</td><td>746</td><td>726</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">El FID mejora en el flujo completo porque compara la distribución de los cuadros generados con la
+        de los reales, sin emparejarlos. El GPT produce cuadros plausibles (la misma persona, el mismo fondo) aunque la
+        seña sea otra.</p>
+    </details>
+  </div>
+</section>
+
+<!-- 04. Chilean2Sign -->
+<section id="chilean2sign" class="shell" aria-labelledby="t-c2s">
+  <p class="kicker">04 · SignViP</p>
+  <h2 id="t-c2s">En Chilean2Sign el difusor transfiere; el pipeline semántico no</h2>
+  <p class="lead">Chilean2Sign es el corpus del proyecto. En sesiones de una hora, personas sordas señan lo que les
+    evocan distintas imágenes, con temas libres, y el material usado reúne a 20 informantes. Sobre él entrenamos cinco
+    versiones del sistema.</p>
+
+  <h3>El difusor aprende a representar a una persona chilena</h3>
+  <p>Con poses reales, el difusor conserva la ropa, el peinado y los accesorios de la referencia y reproduce la
+    postura. Cuando los clips de entrenamiento se recortan según las glosas (<code>chdata12</code>) en lugar de cortarse
+    al azar con pausas incluidas (<code>chdata_clei</code>), las caras ganan expresión y las manos dejan de fundirse.
+    El primer modelo dio origen al artículo aceptado en CLEI 2026.</p>
+  <div class="grid-2x2">
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/c2s_difusor_100.mp4" poster="assets/videos/c2s_difusor_100.webp" muted loop playsinline controls preload="none" aria-label="Original y generado por chdata12, sonrisa"></video>
+      <figcaption>Sonrisa</figcaption>
+    </figure>
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/c2s_difusor_106.mp4" poster="assets/videos/c2s_difusor_106.webp" muted loop playsinline controls preload="none" aria-label="Original y generado por chdata12, boca abierta"></video>
+      <figcaption>Boca abierta</figcaption>
+    </figure>
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/c2s_difusor_107.mp4" poster="assets/videos/c2s_difusor_107.webp" muted loop playsinline controls preload="none" aria-label="Original y generado por chdata12, mano junto al rostro"></video>
+      <figcaption>Mano junto al rostro</figcaption>
+    </figure>
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/c2s_difusor_105.mp4" poster="assets/videos/c2s_difusor_105.webp" muted loop playsinline controls preload="none" aria-label="Original y generado por chdata12, manos juntas"></video>
+      <figcaption>Manos juntas</figcaption>
+    </figure>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <caption>Difusor con poses reales sobre el conjunto de prueba de Chilean2Sign</caption>
+      <thead><tr><th>Métrica</th><th><code>chdata_clei</code></th><th><code>chdata12</code></th></tr></thead>
+      <tbody>
+        <tr><td>IDS ↑</td><td>0,478</td><td><strong>0,515</strong></td></tr>
+        <tr><td>SSIM ↑</td><td>0,660</td><td><strong>0,683</strong></td></tr>
+        <tr><td>LPIPS ↓</td><td><strong>0,316</strong></td><td>0,317</td></tr>
+        <tr><td>FID ↓</td><td><strong>50,1</strong></td><td>57,4</td></tr>
+        <tr><td>FVD ↓</td><td><strong>1.389,0</strong></td><td>1.653,6</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Los conjuntos de prueba tienen 455 y 330 pares, y el FID y el FVD dependen del tamaño de la muestra.
+    El modelo más expresivo mejora en identidad y estructura, y se aleja en las métricas de distribución.</p>
+
+  <h3>Desde el texto, las señas se desarman</h3>
+  <p>Con el GPT y el FSQ entrenados sobre 12 y luego 20 videos glosados, el flujo completo produce manos flotantes,
+    artefactos y rostros que cambian de persona. Corregimos los criterios con que se elegía el mejor FSQ y el mejor GPT
+    (<code>chdata_quant</code>) y ampliamos el codebook de 625 a 2.401 códigos (<code>chdata_latent</code>). El FSQ
+    alcanzó así su mejor reconstrucción, pero el video de extremo a extremo no cambió. Si la representación en su mejor
+    versión no mueve el resultado, el límite está en los datos.</p>
+  <div class="row-3">
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/c2s_fallo_91.mp4" poster="assets/videos/c2s_fallo_91.webp" muted loop playsinline controls preload="none" aria-label="Video generado desde el texto por chdata12, con fallas"></video>
+    </figure>
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/c2s_fallo_48.mp4" poster="assets/videos/c2s_fallo_48.webp" muted loop playsinline controls preload="none" aria-label="Video generado desde el texto por chdata12, con fallas"></video>
+    </figure>
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/c2s_fallo_78.mp4" poster="assets/videos/c2s_fallo_78.webp" muted loop playsinline controls preload="none" aria-label="Video generado desde el texto por chdata12, con fallas"></video>
+    </figure>
+  </div>
+  <p class="caption">Flujo completo de <code>chdata12</code> (texto → GPT → FSQ → difusor) sobre el conjunto de prueba de
+    Chilean2Sign.</p>
+
+  <figure class="media wide">
+    <div class="switcher js-only" role="group" aria-label="Elegir clip">
+      <button type="button" aria-pressed="true" data-src="assets/videos/c2s_fsq_100.mp4">Clip 100</button>
+      <button type="button" aria-pressed="false" data-src="assets/videos/c2s_fsq_130.mp4">Clip 130</button>
+    </div>
+    <video class="autoplay" src="assets/videos/c2s_fsq_100.mp4" poster="assets/videos/c2s_fsq_100.webp"
+           muted loop playsinline controls preload="none"
+           aria-label="Pose de entrada y el resultado de chdata20, chdata_quant y chdata_latent en modo FSQ a difusor"></video>
+    <figcaption>Modo FSQ → difusor en los tres últimos modelos. La pose sale de un clip y la identidad de la foto de otra
+      persona, por eso el primer panel muestra a alguien distinto. Las manos mejoran levemente de izquierda a derecha,
+      mientras el cuerpo y la identidad se mantienen.</figcaption>
+  </figure>
+
+  <details>
+    <summary>Los cinco modelos y sus tablas</summary>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Modelo</th><th>Qué cambió</th><th>Resultado clave</th></tr></thead>
+        <tbody>
+          <tr><td><code>chdata_clei</code></td><td>Solo el difusor, con cortes aleatorios de 5 a 10 s (sin glosas todavía)</td><td>SSIM de validación 0,885; artículo en CLEI 2026</td></tr>
+          <tr><td><code>chdata12</code></td><td>Pipeline completo sobre 12 videos glosados, con clips recortados según las glosas</td><td>Difusor con SSIM de validación 0,896; el GPT elegido predecía secuencias casi estáticas</td></tr>
+          <tr><td><code>chdata20</code></td><td>FSQ y GPT sobre 20 videos, con el difusor de <code>chdata12</code> (entrenado desde cero no converge y queda en SSIM 0,65)</td><td>El error de cuantización del FSQ se multiplica por cinco durante el entrenamiento; IDS 0,091 en modo FSQ → difusor</td></tr>
+          <tr><td><code>chdata_quant</code></td><td>El FSQ se elige por destilación y cuantización, y el GPT debe superar un mínimo de movimiento real</td><td>Error de cuantización de 1,420 a 0,494; GPT con movimiento real (DTW de 140,5 a 127,2)</td></tr>
+          <tr><td><code>chdata_latent</code></td><td>Codebook del FSQ de 625 a 2.401 códigos</td><td>Destilación de 0,088 a 0,024, la mejor del proyecto; extremo a extremo sin cambios</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption>Modo FSQ → difusor, mismo conjunto de prueba</caption>
+        <thead><tr><th>Métrica</th><th><code>chdata20</code></th><th><code>chdata_quant</code></th><th><code>chdata_latent</code></th></tr></thead>
+        <tbody>
+          <tr><td>FVD ↓</td><td>2.804,1</td><td>2.718,2</td><td><strong>2.704,4</strong></td></tr>
+          <tr><td>FID ↓</td><td><strong>62,3</strong></td><td>63,4</td><td>64,4</td></tr>
+          <tr><td>SSIM ↑</td><td><strong>0,666</strong></td><td>0,664</td><td>0,665</td></tr>
+          <tr><td>LPIPS ↓</td><td><strong>0,309</strong></td><td>0,310</td><td><strong>0,309</strong></td></tr>
+          <tr><td>IDS ↑</td><td><strong>0,091</strong></td><td>0,087</td><td>0,089</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption>Modo FSQ → difusor, cada modelo sobre el conjunto de prueba de su corpus</caption>
+        <thead><tr><th>Métrica</th><th><code>chdata12</code></th><th><code>chdata20</code></th></tr></thead>
+        <tbody>
+          <tr><td>FVD ↓</td><td>2.612,9</td><td>2.804,1</td></tr>
+          <tr><td>FID ↓</td><td>61,5</td><td>62,3</td></tr>
+          <tr><td>SSIM ↑</td><td>0,707</td><td>0,666</td></tr>
+          <tr><td>LPIPS ↓</td><td>0,258</td><td>0,309</td></tr>
+          <tr><td>IDS ↑</td><td>0,446</td><td>0,091</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption>Difusor con poses reales, cada corpus sobre su propio conjunto de prueba</caption>
+        <thead><tr><th>Métrica</th><th>PHOENIX</th><th>Chilean2Sign (<code>chdata_clei</code>)</th></tr></thead>
+        <tbody>
+          <tr><td>FVD ↓</td><td>528,5</td><td>1.389,0</td></tr>
+          <tr><td>FID ↓</td><td>31,3</td><td>50,1</td></tr>
+          <tr><td>SSIM ↑</td><td>0,819</td><td>0,660</td></tr>
+          <tr><td>LPIPS ↓</td><td>0,087</td><td>0,316</td></tr>
+          <tr><td>IDS ↑</td><td>0,633</td><td>0,478</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure class="media">
+      <img src="assets/images/fig28_manos.webp" loading="lazy" alt="Grilla de manos en el instante de mayor cercanía con ground truth, chdata20, chdata_quant y chdata_latent en cuatro secuencias">
+      <figcaption>Manos en el instante de mayor cercanía entre ambas. De izquierda a derecha, ground truth,
+        <code>chdata20</code>, <code>chdata_quant</code> y <code>chdata_latent</code>.</figcaption>
+    </figure>
+  </details>
+</section>
+
+<!-- 05. Recuperación -->
+<section id="recuperacion" class="shell" aria-labelledby="t-recuperacion">
+  <p class="kicker">05 · Interpolado</p>
+  <h2 id="t-recuperacion">Recuperar poses reales en vez de generarlas</h2>
+  <p class="lead">Si el difusor funciona y lo que falla es generar la pose, la pose puede salir de grabaciones reales.
+    Para cada glosa tomamos la instancia válida más larga del catálogo anotado (un clip con su DWPose y su HaMeR),
+    adaptamos el esqueleto al cuerpo de la referencia y unimos los clips con una interpolación de 5 cuadros a cada
+    lado. Por ahora la entrada son glosas, y la traducción de español a glosa queda fuera de este trabajo.</p>
+  <div class="row-3 gallery">
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/galeria_02.mp4" poster="assets/videos/galeria_02.webp" muted loop playsinline controls preload="none" aria-label="Video generado de PREGUNTAR RESPONDER DOCUMENTO RUT FIRMAR"></video>
+      <figcaption><ol class="glosses small"><li>PREGUNTAR</li><li>RESPONDER</li><li>DOCUMENTO</li><li>RUT</li><li>FIRMAR</li></ol></figcaption>
+    </figure>
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/galeria_03.mp4" poster="assets/videos/galeria_03.webp" muted loop playsinline controls preload="none" aria-label="Video generado de GRUPO PARTICIPAR SORDOS OYENTES BARRERA COMUNICAR"></video>
+      <figcaption><ol class="glosses small"><li>GRUPO</li><li>PARTICIPAR</li><li>SORDOS</li><li>OYENTES</li><li>BARRERA</li><li>COMUNICAR</li></ol></figcaption>
+    </figure>
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/galeria_04.mp4" poster="assets/videos/galeria_04.webp" muted loop playsinline controls preload="none" aria-label="Video generado de HOMBRE MUJER AUTO CAMINAR VER"></video>
+      <figcaption><ol class="glosses small"><li>HOMBRE</li><li>MUJER</li><li>AUTO</li><li>CAMINAR</li><li>VER</li></ol></figcaption>
+    </figure>
+  </div>
+  <p class="caption">Secuencias de la informante 1 renderizadas con <code>chdata12-384-FT</code>. Las 12 glosas espaciales
+    (PRO1, AHÍ, ALLÁ…) quedan fuera porque apuntan a lugares que dependen de la oración, y lo mismo ocurre con los
+    clasificadores.</p>
+</section>
+
+<!-- 06. Normalización -->
+<section id="normalizacion" class="shell" aria-labelledby="t-normalizacion">
+  <p class="kicker">06 · Interpolado</p>
+  <h2 id="t-normalizacion">Normalizar el esqueleto elimina los saltos entre informantes</h2>
+  <p class="lead">Al mezclar clips de personas distintas, el difusor sigue al esqueleto y el cuerpo cambia de tamaño y
+    de posición en cada unión. N1 ajusta la escala y la posición al cuerpo de la referencia, con lo que el salto
+    desaparece. N2 ajusta además el largo de cada hueso y se nota cuando las proporciones son muy distintas.</p>
+  <figure class="media wide">
+    <div class="switcher js-only" role="group" aria-label="Elegir secuencia">
+      <button type="button" aria-pressed="true" data-src="assets/videos/normalizacion_02.mp4">PERSONA · PREGUNTAR · DIFÍCIL</button>
+      <button type="button" aria-pressed="false" data-src="assets/videos/normalizacion_01.mp4">VISITAR · CASA · OYENTE</button>
+      <button type="button" aria-pressed="false" data-src="assets/videos/normalizacion_03.mp4">FAMILIA · ESCUELA · INTÉRPRETE</button>
+    </div>
+    <video class="autoplay" src="assets/videos/normalizacion_02.mp4" poster="assets/videos/normalizacion_02.webp"
+           muted loop playsinline controls preload="none"
+           aria-label="Cuatro paneles con los clips reales, sin normalizar, N1 y N1 más N2"></video>
+    <figcaption>Secuencias A → B → A entre dos informantes de contextura distinta, con la apariencia de una sola
+      referencia. De izquierda a derecha, los clips reales, sin normalizar, N1 y N1+N2. Difusor
+      <code>chdata12-fvd-FT</code>.</figcaption>
+  </figure>
+</section>
+
+<!-- 07. Modelo 384 -->
+<section id="modelo-384" class="shell" aria-labelledby="t-384">
+  <p class="kicker">07 · Interpolado</p>
+  <h2 id="t-384">A 384×320, caras y dedos ganan nitidez</h2>
+  <p class="lead">Reentrenamos el difusor a 384×320, con el doble de píxeles, con referencias tomadas de otro clip de la
+    misma persona (como ocurre en inferencia) y con HaMeR al doble de resolución. En el mismo conjunto de clips sube la
+    identidad y baja el error de las manos. A cambio aparecen fugas, porque la ropa o el cuerpo de quien hizo la seña
+    original se filtran sobre la referencia.</p>
+  <figure class="media wide">
+    <div class="switcher js-only" role="group" aria-label="Elegir secuencia">
+      <button type="button" aria-pressed="true" data-src="assets/videos/modelo384_01.mp4">MUJER · TRABAJO · CASA · VIVIR · DINERO</button>
+      <button type="button" aria-pressed="false" data-src="assets/videos/modelo384_02.mp4">FAMILIA · ESCUELA · INTÉRPRETE · SEÑAS · MEJOR</button>
+      <button type="button" aria-pressed="false" data-src="assets/videos/modelo384_04.mp4">CLAVE · WEB · CORREO · DOCUMENTO · NUEVO</button>
+    </div>
+    <video class="autoplay" src="assets/videos/modelo384_01.mp4" poster="assets/videos/modelo384_01.webp"
+           muted loop playsinline controls preload="none"
+           aria-label="Cuatro paneles con los clips reales, la pose de entrada, chdata12-fvd-FT y chdata12-384-FT"></video>
+    <figcaption>Glosas de informantes distintos (1, 6, 9, 16 y 19), normalizadas con N1+N2. De izquierda a derecha, los
+      clips reales, la pose de entrada, <code>chdata12-fvd-FT</code> y <code>chdata12-384-FT</code>.</figcaption>
+  </figure>
+  <div class="table-wrap">
+    <table>
+      <caption>Conjunto de 15 clips, los mismos para ambos modelos</caption>
+      <thead><tr><th>Métrica</th><th><code>chdata12-fvd-FT</code> (272×224)</th><th><code>chdata12-384-FT</code> (384×320)</th></tr></thead>
+      <tbody>
+        <tr><td>IDS ↑</td><td>0,405</td><td><strong>0,518</strong></td></tr>
+        <tr><td>SSIM ↑</td><td>0,813</td><td><strong>0,878</strong></td></tr>
+        <tr><td>LPIPS ↓</td><td>0,089</td><td><strong>0,069</strong></td></tr>
+        <tr><td>Hand SSIM a 384 ↑</td><td>0,571</td><td><strong>0,592</strong></td></tr>
+        <tr><td>Error de keypoints de mano ↓</td><td>4,97 %</td><td><strong>4,03 %</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 08. Identidad -->
+<section id="identidad" class="shell" aria-labelledby="t-identidad">
+  <p class="kicker">08 · Interpolado</p>
+  <h2 id="t-identidad">La identidad se conserva distinto según el informante</h2>
+  <p class="lead">Reconstruimos hasta 50 frases reales por informante con <code>chdata12-384-FT</code> y medimos la
+    similitud facial (IDS) entre el original y el generado. Parte de la diferencia entre informantes viene del tamaño
+    de la cara en el cuadro, ya que una cara más grande se asocia a un IDS mayor (ρ = 0,71). El modelo vio a estas
+    personas durante el entrenamiento, así que no es un conjunto separado.</p>
+  <div class="chart-block">
+    <h3 class="chart-title">IDS media por informante</h3>
+    <p class="chart-sub">Similitud coseno de embeddings faciales entre original y generado. Al pasar el cursor por una
+      barra se ven la mediana y el número de frases.</p>
+    <div id="chart-identity" aria-hidden="true"></div>
+    <details>
+      <summary>Tabla</summary>
+      <div class="table-wrap narrow">
+        <table>
+          <thead><tr><th>Informante</th><th>IDS media</th><th>Mediana</th><th>Desv.</th><th>Frases</th></tr></thead>
+          <tbody>
+            <tr><td>inf16</td><td>0,668</td><td>0,675</td><td>0,046</td><td>50</td></tr>
+            <tr><td>inf9</td><td>0,637</td><td>0,632</td><td>0,047</td><td>50</td></tr>
+            <tr><td>inf6</td><td>0,627</td><td>0,627</td><td>0,037</td><td>45</td></tr>
+            <tr><td>inf1</td><td>0,617</td><td>0,627</td><td>0,042</td><td>50</td></tr>
+            <tr><td>inf11</td><td>0,614</td><td>0,614</td><td>0,037</td><td>50</td></tr>
+            <tr><td>inf18</td><td>0,599</td><td>0,606</td><td>0,038</td><td>18</td></tr>
+            <tr><td>inf22</td><td>0,540</td><td>0,533</td><td>0,038</td><td>27</td></tr>
+            <tr><td>inf7</td><td>0,538</td><td>0,546</td><td>0,038</td><td>50</td></tr>
+            <tr><td>inf10</td><td>0,511</td><td>0,517</td><td>0,054</td><td>32</td></tr>
+            <tr><td>inf19</td><td>0,489</td><td>0,493</td><td>0,050</td><td>23</td></tr>
+            <tr><td>inf8</td><td>0,447</td><td>0,461</td><td>0,056</td><td>50</td></tr>
+            <tr><td>inf13</td><td>0,364</td><td>0,380</td><td>0,076</td><td>50</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">inf21 (0,541) e inf15 (0,522) quedan sin posición por tener menos de 10 frases.</p>
+    </details>
+  </div>
+  <div class="row-2">
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/identidad_mejor_inf16.mp4" poster="assets/videos/identidad_mejor_inf16.webp" muted loop playsinline controls preload="none" aria-label="Original y generado de la informante 16, IDS 0,751"></video>
+      <figcaption>Mejor caso, inf16 (IDS 0,751)</figcaption>
+    </figure>
+    <figure class="media">
+      <video class="autoplay" src="assets/videos/identidad_peor_inf13_b.mp4" poster="assets/videos/identidad_peor_inf13_b.webp" muted loop playsinline controls preload="none" aria-label="Original y generado de la informante 13, IDS 0,217"></video>
+      <figcaption>Caso bajo, inf13 (IDS 0,217). El cuerpo y la ropa se reproducen bien y la diferencia está en la cara.</figcaption>
+    </figure>
+  </div>
+</section>
+
+</main>
+
+<footer id="creditos" class="footer">
+  <div class="shell">
+    <h2>Créditos y fuentes</h2>
+    <ul class="refs">
+      <li><strong>Chilean2Sign</strong>, corpus de LSCh del proyecto Fondecyt Regular 1250344, dirigido por Ana Aguilera.
+        Lo grabaron personas sordas que autorizaron la publicación de su imagen, y lo glosó un equipo de lingüistas,
+        intérpretes de LSCh y personas sordas.</li>
+      <li>J. Figueroa, M. Yáñez, I. Sipirán y A. Aguilera, «Diffusion Model for Chilean Sign Language», CLEI 2026.</li>
+      <li>C. Wang, Z. Deng, Z. Jiang et al., «Advanced Sign Language Video Generation with Compressed and Quantized
+        Multi-Condition Tokenization» (SignViP), NeurIPS 2025.
+        <a href="https://arxiv.org/abs/2506.15980">arXiv:2506.15980</a> ·
+        <a href="https://github.com/umnooob/signvip">código</a>.</li>
+      <li>S. Fang, Y. Feng, H. Zhong, Y. Zhang y D. N. Metaxas, «Stable Signer: Hierarchical Sign Language Generative
+        Model», <a href="https://arxiv.org/abs/2512.04048">arXiv:2512.04048</a>. De este trabajo viene la idea de
+        recuperar poses por glosa.</li>
+      <li><strong>RWTH-PHOENIX-Weather 2014</strong>. O. Koller, J. Forster y H. Ney, «Continuous sign language
+        recognition: Towards large vocabulary statistical recognition systems handling multiple signers», Computer
+        Vision and Image Understanding 141, 2015. Los videos derivados se publican bajo
+        <a href="https://creativecommons.org/licenses/by-nc-sa/3.0/">CC BY-NC-SA 3.0</a>, sin fines comerciales.
+        <a href="https://www-i6.informatik.rwth-aachen.de/~koller/RWTH-PHOENIX/">Sitio del corpus</a>.</li>
+      <li>Z. Yang et al., «Effective Whole-body Pose Estimation with Two-stages Distillation» (DWPose), ICCV 2023
+        Workshops. <a href="https://github.com/IDEA-Research/DWPose">código</a>.</li>
+      <li>G. Pavlakos et al., «Reconstructing Hands in 3D with Transformers» (HaMeR), CVPR 2024.
+        <a href="https://github.com/geopavlakos/hamer">código</a>.</li>
+      <li>R. Rombach et al., «High-Resolution Image Synthesis with Latent Diffusion Models», CVPR 2022 (Stable Diffusion
+        1.5). <a href="https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5">pesos</a>.</li>
+      <li>Y. Guo et al., «AnimateDiff: Animate Your Personalized Text-to-Image Diffusion Models without Specific
+        Tuning», ICLR 2024. <a href="https://github.com/guoyww/AnimateDiff">código</a>.</li>
+      <li>Página hermana, <a href="https://slate-uv.github.io/cross-corpus-pose-evaluation/">Cross-Corpus Evaluation of
+        Multiple Pose Estimation Methods for Sign Language: Towards Metrics for Accurate Sign Representation</a>
+        (M. Yáñez y A. Aguilera).</li>
+    </ul>
+    <p class="small">Joaquín Figueroa y Ana Aguilera · Universidad de Chile · Universidad de Valparaíso · 2026</p>
+  </div>
+</footer>
+
+<div id="tooltip" class="tooltip" role="status" hidden></div>
+</body>
+</html>
